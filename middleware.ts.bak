@@ -1,0 +1,90 @@
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+
+export function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  // Get session token from cookies
+  const sessionToken = request.cookies.get('authjs.session-token')?.value ||
+                       request.cookies.get('__Secure-authjs.session-token')?.value;
+
+  const isLoggedIn = !!sessionToken;
+
+  // Public routes that don't require authentication
+  const publicRoutes = [
+    '/',
+    '/products',
+    '/product',
+    '/categories',
+    '/auth/login',
+    '/auth/register',
+    '/auth/admin-login',
+    '/auth/admin-register',
+    '/auth/forgot-password',
+    '/auth/reset-password',
+    '/auth/error',
+  ];
+
+  // Check if current path is public
+  const isPublicRoute = publicRoutes.some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`)
+  );
+
+  // Admin routes
+  const isAdminRoute = pathname.startsWith('/admin');
+
+  // User account routes
+  const isAccountRoute = pathname.startsWith('/account');
+
+  // Auth routes (login, register, etc.)
+  const isAuthRoute = pathname.startsWith('/auth');
+
+  // API routes should be handled separately
+  if (pathname.startsWith('/api')) {
+    return NextResponse.next();
+  }
+
+  // Static files
+  if (
+    pathname.startsWith('/_next') ||
+    pathname.startsWith('/favicon') ||
+    pathname.includes('.')
+  ) {
+    return NextResponse.next();
+  }
+
+  // If user is logged in and trying to access auth pages (except profile-setup)
+  if (isLoggedIn && isAuthRoute && !pathname.includes('profile-setup')) {
+    // Redirect to homepage for regular auth pages
+    if (pathname.includes('admin')) {
+      return NextResponse.redirect(new URL('/admin', request.url));
+    }
+    return NextResponse.redirect(new URL('/', request.url));
+  }
+
+  // Protect admin routes - redirect to admin login if not authenticated
+  if (isAdminRoute && !isLoggedIn) {
+    return NextResponse.redirect(new URL('/auth/admin-login', request.url));
+  }
+
+  // Protect account routes - redirect to login if not authenticated
+  if (isAccountRoute && !isLoggedIn) {
+    const callbackUrl = encodeURIComponent(pathname);
+    return NextResponse.redirect(new URL(`/auth/login?callbackUrl=${callbackUrl}`, request.url));
+  }
+
+  return NextResponse.next();
+}
+
+export const config = {
+  matcher: [
+    /*
+     * Match all request paths except for the ones starting with:
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     * - public folder
+     */
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+  ],
+};
